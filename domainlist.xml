@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<supportedhubs>
+
+<!-- ################################################################################ -->
+<!-- Email configuration for the "-e" option-->
+<!-- A copy of the sent email is sent to the sender, this not be unset here.-->
+<email>
+	<!--to_address>nanohueb@gmail.com</to_address-->  <!-- Expects only one email address -->
+	<to_address>someone@purdue.edu</to_address>
+	<from_address>me@purdue.edu</from_address>  <!-- Expects only one email address -->
+</email>
+
+<!-- ################################################################################ -->
+
+<!--  retired="0"= not retired and actively being used and paid, retired="1"= retired, not paid, not actively used  -->
+
+<hubname retired="0">
+<altnames></altnames>
+<redirect></redirect>
+<notes></notes>
+</hubname>
+
+<hubname.org retired="0">
+<altnames>www.hubname.org, webdav.hubname.org, vncproxy.hubname.org</altnames>
+<redirect></redirect>
+<notes></notes>
+</hubname.org>
+
+
+<!--
+<hubname retired="0">
+<altnames></altnames>
+<redirect></redirect>
+<notes></notes>
+</hubname>
+
+<hubname.org retired="0">
+<altnames>www.hubname.org, webdav.hubname.org, vncproxy.hubname.org</altnames>
+<redirect></redirect>
+<notes></notes>
+</hubname.org>
+-->
+
+
+</supportedhubs>

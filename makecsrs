@@ -1,0 +1,352 @@
+#!/bin/bash
+ 
+# This script was designed to generate and send requests for new and replacement SSL certificates affiliated with HUBzero hosts.
+# *Required files - domainlist.xml in the same directory as this script.
+# *Emails in the XML must be entered and up-to-date.  
+# *All elements for each hub in the XML must be up-to-date
+#
+# .org, .com or .net domains are expected.  .edu domains are not supported.  See the manual cert generation process.
+# Foreign, non-US domains are not supported, but may work with this script.
+#
+# Caution when using the -e or -eo option. This will generate and send an email to our friends at accounts@purdue.edu.  Do NOT spam them.
+#
+# Dependencies: 
+#	GNU bash, version 4.2.37(1)-release (x86_64-pc-linux-gnu)
+#	xmllint: using libxml version 20800
+#	OpenSSL 1.0.1e 11 Feb 2013
+#	Mutt 1.5.21 (2010-09-15)
+#
+# This script is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Lesser General Public License for more details.
+# 
+# HUBzero is a registered trademark of Purdue University.
+# 
+# @organization   HUBzero
+# @author    Erich Huebner <erich.w.huebner@gmail.com>
+# @copyright Copyright 2015 Purdue University. All rights reserved.
+# @license   http://www.gnu.org/licenses/lgpl-3.0.html LGPLv3
+
+function getstate() { # find and return the full state name that is required by the SSL certficate /
+				   	  #  if a state abbreviation is given in the WHOIS info.  *US states only.
+	declare -A state_abbr=( 
+	  ["AL"]="Alabama"
+	  ["AK"]="Alaska"
+	  ["AS"]="America Samoa"
+	  ["AZ"]="Arizona"
+	  ["AR"]="Arkansas"
+	  ["CA"]="California"
+	  ["CO"]="Colorado"
+	  ["CT"]="Connecticut"
+	  ["DE"]="Delaware"
+	  ["DC"]="District of Columbia"
+	  ["FM"]="Micronesia1"
+	  ["FL"]="Florida"
+	  ["GA"]="Georgia"
+	  ["GU"]="Guam"
+	  ["HI"]="Hawaii"
+	  ["ID"]="Idaho"
+	  ["IL"]="Illinois"
+	  ["IN"]="Indiana"
+	  ["IA"]="Iowa"
+	  ["KS"]="Kansas"
+	  ["KY"]="Kentucky"
+	  ["LA"]="Louisiana"
+	  ["ME"]="Maine"
+	  ["MH"]="Islands1"
+	  ["MD"]="Maryland"
+	  ["MA"]="Massachusetts"
+	  ["MI"]="Michigan"
+	  ["MN"]="Minnesota"
+	  ["MS"]="Mississippi"
+	  ["MO"]="Missouri"
+	  ["MT"]="Montana"
+	  ["NE"]="Nebraska"
+	  ["NV"]="Nevada"
+	  ["NH"]="New Hampshire"
+	  ["NJ"]="New Jersey"
+	  ["NM"]="New Mexico"
+	  ["NY"]="New York"
+	  ["NC"]="North Carolina"
+	  ["ND"]="North Dakota"
+	  ["OH"]="Ohio"
+	  ["OK"]="Oklahoma"
+	  ["OR"]="Oregon"
+	  ["PW"]="Palau"
+	  ["PA"]="Pennsylvania"
+	  ["PR"]="Puerto Rico"
+	  ["RI"]="Rhode Island"
+	  ["SC"]="South Carolina"
+	  ["SD"]="South Dakota"
+	  ["TN"]="Tennessee"
+	  ["TX"]="Texas"
+	  ["UT"]="Utah"
+	  ["VT"]="Vermont"
+	  ["VI"]="Virgin Island"
+	  ["VA"]="Virginia"
+	  ["WA"]="Washington"
+	  ["WV"]="West Virginia"
+	  ["WI"]="Wisconsin"
+	  ["WY"]="Wyoming"
+	)
+
+	 if [ ${state_abbr[$1]+_} ]; then  #  if the state exists in the array return if not stop script and display message.
+	    for i_statearray in "${!state_abbr[@]}"
+	      do
+	      	getstate_return=${state_abbr[$1]}
+	    done
+	  else
+	    echo "*State not found.*"; 
+	    echo "Stopping creation for $i.  State is abbreviated and unknown, probably a non-US state abbreviation."
+		echo "*************************************************"
+		exit
+	  fi
+}
+
+function sendemail() {  # creates and send an email when the -e flag is present.
+	
+	# get alternate name from xml file
+	altnames=$(xmllint --xpath "//$i/altnames/text()" ../domainlist.xml '//a' <(echo "<data/>") 2>/dev/null)
+	
+	# get the to address from xml file
+	to_address=$(xmllint --xpath "//email/to_address/text()" ../domainlist.xml)
+	
+	# get from address from xml file
+	from_address=$(xmllint --nocdata --xpath "//email/from_address/text()" ../domainlist.xml)
+		
+	# set subject variable with desired subject text
+	subject="SHA-2 SSL Certificate request for $i (HUBzero project)"
+
+
+	if [ -z "$altnames" ]; then  # if altname string is null, that is, has zero length. Set message body for single domain.
+	body_message="Hello,\n\nI would like to request a SHA-2 certificate for $i.\nA new csr is attached.\n\n$i: single-domain.\n\nThank you."
+	fi
+
+	if [ -n "$altnames" ]; then  # if altname string is not null.  Set message body for multi-domain.
+	body_message="Hello,\n\nI would like to request a SHA-2 certificate for $i.\nA new csr is attached.\n\n$i: multi-domain with:\n$altnames\n\nThank you."
+	fi
+
+	# set email from address environ variable for MUTT
+	export EMAIL="$from_address"
+	#send email via MUTT
+	echo -e "$body_message" | mutt -s "$subject" -b $from_address -a $i.csr -- $to_address 
+	# echo response
+	echo "**Email request sent to $to_address.**"
+}
+
+
+#check for user input, output help when no arguments entered.
+if [ $# -eq 0 ] || [ $1 == "-h" ];then
+	echo -e "'Need more input.'' - Johnny 5.\n"
+	echo -e "makecsrs - generate a CSR and send request with attached CSR to certificate stewards.\n"
+	echo -e "Usage: ./makecsrs [[-e] | [-eo]] hubdomain.org ..."
+	echo -e "Options:"
+	echo -e "none   Only generate a CSR for each domain entered in succession."
+	echo -e "-e     Send email request to the email specified email in the XML file for each domain entered in succession."
+	echo -e "-eo    Send email request to the email specified email in the XML file for each domain CSR that has already"
+	echo -e "       been created in the appropriate directory.  *For .edu domains.\n"
+	echo -e "*Required file - domainlist.xml in the same directory as this script."
+	echo -e "A 'hubdomain.org.waiting' directory will be created and the .key and .csr files inserted."
+	echo -e "A FQDN is expected for each domain.  'hubzero.org dev.hubzero.org nanohub.org ...'"
+	echo -e "The XML file must be current and present to use the -e or -eo option."
+	echo -e "An internet connection is required for all options."
+	echo -e "This script can NOT generate a CSR for .edu domains."
+	echo -e "CSR creation will fail if the WHOIS info is bad or nonexistent."
+	echo -e "A wait time has been programmed to help prevent getting banned temporarily by the WHOIS servers.\n"
+	exit
+fi
+
+if [ "$1" == "-e" ];then
+	num=$(($#-1))
+	echo "Number of certs to create: $num"
+elif [ "$1" == "-eo" ];then
+	num=$(($#-1))
+	echo "Number of CSRs to email: $num"
+else
+	echo "Number of certs to create: $#"
+fi
+
+echo "*************************************************"
+
+loopcount=0
+
+for i in "$@"
+	do
+	
+	#skip the first loop for the -e flag
+	if [ "$i" == "-e" ] || [ "$i" == "-eo" ];then
+		continue
+	fi
+
+	if [ "$1" == "-eo" ];then
+		#check if directory already exists
+		if [ -d "$i.waiting" ]; then
+			#change into directory previously created.
+			cd "$i.waiting"
+			sendemail
+			#go back to starting directory
+			cd ..
+			#echo completed response.
+			echo "Completed" $i "."
+			echo "*************************************************"
+			continue
+		else
+			echo "No directory present for this domain in the expected format."
+			echo "Stopping"
+			echo "*************************************************"
+			exit
+		fi
+
+	fi
+
+	#wait only if not the first loop
+	if [ "$loopcount" -ne 0 ];then
+		loopcount=$(($loopcount + 1))
+		# wait 15 seconds so we don't get banned by the WHOIS server
+		sleep 15		
+	else	
+	    loopcount=$(($loopcount + 1))
+	fi
+
+	#check if domain exists in the xml file
+	if [ "$(xmllint --xpath "boolean(//$i/text())" domainlist.xml)" = "false" ];then
+		echo "An entry for this domain must be entered in the xml file."
+		echo "Stopping creation for $i."
+		echo "*************************************************"
+		continue
+	fi
+
+	#check if directory already exists
+	if [ -d "$i" ]; then
+		echo "A directory for this domain already exists in the current directory."
+		echo "Stopping creation for $i."
+		echo "*************************************************"
+		continue
+	fi
+
+		#check if directory already exists
+	if [ -d "$i.waiting" ]; then
+		echo "A .waiting directory for this domain already exists in the current directory."
+		echo "Stopping creation for $i."
+		echo "*************************************************"
+		continue
+	fi
+
+	#strip off subdomain from the entered domain to get for "hubzero.org" instead of "dev00.hubzero.org"
+	idomain=$(sed 's/.*\.\(.*\..*\)/\1/' <<< $i)
+
+	#get WHOIS info of input url, keeping newlines
+	whoisinfo=$(whois $idomain)
+
+
+	#check user input for format
+	if [ "$whoisinfo" = "No whois server is known for this kind of object." ];then
+		echo "Please enter a FQDN for '$i'."
+		echo "*************************************************"
+		continue
+	fi
+
+
+	#check that domain exists
+	if [ "$whoisinfo" = "NOT FOUND" ];then
+        echo "Domain '$idomain' not found."
+        echo "*************************************************"
+        continue
+	fi
+
+	#grep for lines of required info and strip out leading characters of line labels. 	#emove both trailing and leading spaces
+	# grep WHOIS info, sanitaize
+	who_country=$(echo "$whoisinfo" | grep "Registrant Country:" | sed -r 's/^.{19}//' | sed -e 's/^ *//' -e 's/ *$//')
+	
+	# check WHOIS info, stop if emtpy
+	if [ -z "$who_country" ]; then
+		echo "WHOIS Country Field is empty"
+		echo "Stopping creation for $i.  Please correct the WHOIS entry."
+		echo "*************************************************"
+		continue
+	fi
+
+	# check WHOIS info, stop if emtpy
+	if (("${#who_country}" != "2"));then
+		echo "WHOIS Country Field is too long. Expecting two character country code."
+		echo "Stopping creation for $i.  Please correct the WHOIS entry."
+		echo "*************************************************"
+		continue
+	fi
+
+	# grep WHOIS info, sanitaize
+	who_state=$(echo "$whoisinfo" | grep "Registrant State/Province:" | sed -r 's/^.{26}//' | sed -e 's/^ *//' -e 's/ *$//')
+	
+	# check WHOIS info, stop if emtpy
+	if [ -z "$who_state" ];then
+		echo "WHOIS State Field is empty.  This field is required for a CSR."
+		echo "Stopping creation for $i.  Please correct the WHOIS entry."
+		echo "*************************************************"
+		continue
+	fi
+	# check state if state is abbreviated, lookup full state name  if yes.  
+	if (("${#who_state}" == "2"));then
+		echo "State is abbreviated.  The full state name is required."
+			#echo $who_state
+			#who_state="Indiana"
+			getstate $who_state
+			who_state=$getstate_return
+		echo "Full state name is *$who_state*. (US states only)"
+	fi
+
+	# grep WHOIS info, sanitaize
+	who_citylocation=$(echo "$whoisinfo" | grep "Registrant City:" | sed -r 's/^.{16}//' | sed -e 's/^ *//' -e 's/ *$//')
+
+	# check WHOIS info, stop if emtpy
+	if [ -z "$who_citylocation" ]; then
+		echo "WHOIS City Field is empty"
+		echo "Stopping creation for $i.  Please correct the WHOIS entry."
+		echo "*************************************************"
+		continue
+	fi
+
+	# grep WHOIS info, sanitaize
+	who_org=$(echo "$whoisinfo" | grep "Registrant Organization:" | sed -r 's/^.{24}//' | sed -e 's/^ *//' -e 's/ *$//')
+
+	# check WHOIS info, stop if emtpy
+	if [ -z "$who_org" ]; then
+		echo "WHOIS Organization Field is empty.  This field is required for a CSR."
+		echo "Stopping creation for $i.  Please correct the WHOIS entry."
+		echo "*************************************************"
+		continue
+	fi
+
+	# grep WHOIS info, sanitaize
+	who_email=$(echo "$whoisinfo" | grep "Registrant Email:" | sed -r 's/^.{17}//' | sed -e 's/^ *//' -e 's/ *$//')
+
+	# check WHOIS info, stop if emtpy
+	if [ -z "$who_email" ]; then
+		echo "WHOIS Email Field is empty"
+		echo "Stopping creation for $i.  Please correct the WHOIS entry."
+		echo "*************************************************"
+		continue
+	fi
+
+	#create directory from input url.
+	mkdir "$i.waiting"
+	#change into new directory.
+	cd "$i.waiting"
+	#generate ssl key
+	#openssl genrsa -out $i.key 2048 -sha512
+	openssl genrsa -out $i.key 4096 -sha512
+	#generate csr
+	openssl req -new -key $i.key -out $i.csr -subj "/C=$who_country/ST=$who_state/L=$who_citylocation/O=$who_org/OU=./CN=$i/emailAddress=$who_email"
+	
+	#call sendmail function is -e flag is entered.
+	if [ "$1" == "-e" ];then
+		sendemail
+	fi
+
+	#go back to starting directory
+	cd ..
+
+	#echo completed response.
+	echo "Completed" $i "."
+	echo "*************************************************"
+done
